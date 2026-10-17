@@ -3,18 +3,16 @@ import html
 import requests
 import streamlit as st
 
-# ==================================================
+# ==========================================
 # إعدادات الموقع
-# ==================================================
+# ==========================================
 st.set_page_config(
-    page_title="حصن المسلم والقرآن الكريم | OMAR MELIGY",
+    page_title="حصن المسلم والقرآن الكريم",
     page_icon="📖",
     layout="wide",
 )
 
 QURAN_API = "https://api.alquran.cloud/v1"
-QF_BASE = "https://apis.quran.foundation/content/api/v4"
-QF_TOKEN_URL = "https://oauth2.quran.foundation/oauth2/token"
 
 ADHKAR_URL = (
     "https://raw.githubusercontent.com/"
@@ -35,78 +33,134 @@ RECITERS = {
     "سعود الشريم": "ar.saoodshuraym",
 }
 
+QIRAAT = {
+    "نافع المدني": [
+        "قالون عن نافع",
+        "ورش عن نافع",
+    ],
+    "ابن كثير المكي": [
+        "البزي عن ابن كثير",
+        "قنبل عن ابن كثير",
+    ],
+    "أبو عمرو البصري": [
+        "الدوري عن أبي عمرو",
+        "السوسي عن أبي عمرو",
+    ],
+    "ابن عامر الشامي": [
+        "هشام عن ابن عامر",
+        "ابن ذكوان عن ابن عامر",
+    ],
+    "عاصم الكوفي": [
+        "شعبة عن عاصم",
+        "حفص عن عاصم",
+    ],
+    "حمزة الكوفي": [
+        "خلف عن حمزة",
+        "خلاد عن حمزة",
+    ],
+    "الكسائي الكوفي": [
+        "أبو الحارث عن الكسائي",
+        "الدوري عن الكسائي",
+    ],
+    "أبو جعفر المدني": [
+        "ابن وردان عن أبي جعفر",
+        "ابن جماز عن أبي جعفر",
+    ],
+    "يعقوب الحضرمي": [
+        "رويس عن يعقوب",
+        "روح عن يعقوب",
+    ],
+    "خلف العاشر": [
+        "إسحاق عن خلف",
+        "إدريس عن خلف",
+    ],
+}
 
-# ==================================================
-# تحميل القرآن والأذكار
-# ==================================================
-def get_json(url, params=None):
+
+# ==========================================
+# تحميل البيانات
+# ==========================================
+def get_json(url):
     response = requests.get(
         url,
-        params=params,
         timeout=30,
     )
     response.raise_for_status()
+
     data = response.json()
 
     if data.get("code", 200) != 200:
-        raise ValueError("مصدر البيانات أعاد خطأ.")
+        raise ValueError("تعذر تحميل البيانات.")
 
     return data
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_surahs():
-    return get_json(f"{QURAN_API}/surah")["data"]
+    return get_json(
+        f"{QURAN_API}/surah"
+    )["data"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_surah(surah_number, edition):
-    return get_json(
-        f"{QURAN_API}/surah/{surah_number}/{edition}"
-    )["data"]
+    url = (
+        f"{QURAN_API}/surah/"
+        f"{surah_number}/{edition}"
+    )
+    return get_json(url)["data"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_surah_text(surah_number):
-    return get_json(
-        f"{QURAN_API}/surah/{surah_number}/quran-uthmani"
-    )["data"]
+    url = (
+        f"{QURAN_API}/surah/"
+        f"{surah_number}/quran-uthmani"
+    )
+    return get_json(url)["data"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_adhkar():
-    response = requests.get(ADHKAR_URL, timeout=30)
+    response = requests.get(
+        ADHKAR_URL,
+        timeout=30,
+    )
     response.raise_for_status()
+
     data = response.json()
     result = []
 
     for segment in data.get("segments", []):
         segment_name = segment.get(
-            "segment_name", "أذكار متنوعة"
+            "segment_name",
+            "أذكار متنوعة",
         )
 
         for category in segment.get("categories", []):
             category_name = category.get(
-                "category_name", segment_name
+                "category_name",
+                segment_name,
             )
 
             for title in category.get("titles", []):
                 title_name = title.get(
-                    "title_name", category_name
+                    "title_name",
+                    category_name,
                 )
 
                 for dua in title.get("duas", []):
-                    arabic = str(
+                    arabic_text = str(
                         dua.get("arabic", "")
                     ).strip()
 
-                    if not arabic:
+                    if not arabic_text:
                         continue
 
                     result.append({
                         "القسم": category_name,
                         "الباب": title_name,
-                        "النص": arabic,
+                        "النص": arabic_text,
                         "المصدر": str(
                             dua.get("source", "")
                         ),
@@ -121,117 +175,9 @@ def load_all_adhkar():
     return result
 
 
-# ==================================================
-# واجهة القراءات العشر الرسمية
-# تتطلب بيانات اعتماد وصلاحية qiraat.read
-# ==================================================
-def get_qf_credentials():
-    try:
-        client_id = st.secrets["QF_CLIENT_ID"]
-        client_secret = st.secrets["QF_CLIENT_SECRET"]
-
-        if client_id and client_secret:
-            return client_id, client_secret
-
-    except Exception:
-        pass
-
-    return None, None
-
-
-@st.cache_data(ttl=3300, show_spinner=False)
-def get_qf_token(client_id, client_secret):
-    response = requests.post(
-        QF_TOKEN_URL,
-        auth=(client_id, client_secret),
-        data={
-            "grant_type": "client_credentials",
-            "scope": "qiraat.read",
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    token = response.json().get("access_token")
-
-    if not token:
-        raise ValueError("لم يتم الحصول على رمز API.")
-
-    return token
-
-
-def qf_request(url, token, client_id, params=None):
-    response = requests.get(
-        url,
-        params=params,
-        headers={
-            "x-auth-token": token,
-            "x-client-id": client_id,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def load_qiraat_chapter(
-    chapter_number,
-    client_id,
-    client_secret,
-):
-    token = get_qf_token(client_id, client_secret)
-
-    url = (
-        f"{QF_BASE}/qiraat/matrix/"
-        f"by_chapter/{chapter_number}"
-    )
-
-    all_junctures = []
-    readers = []
-    transmitters = []
-    page = 1
-    total_pages = 1
-    chapter_data = {}
-
-    while page <= total_pages:
-        data = qf_request(
-            url,
-            token,
-            client_id,
-            params={
-                "page": page,
-                "per_page": 100,
-                "text_field": "text_uthmani",
-                "language": "ar",
-            },
-        )
-
-        chapter_data = data.get("chapter", chapter_data)
-        readers = data.get("readers", readers)
-        transmitters = data.get(
-            "transmitters", transmitters
-        )
-
-        all_junctures.extend(
-            data.get("junctures", [])
-        )
-
-        pagination = data.get("pagination", {})
-        total_pages = pagination.get("total_pages", 1)
-        page += 1
-
-    return {
-        "chapter": chapter_data,
-        "readers": readers,
-        "transmitters": transmitters,
-        "junctures": all_junctures,
-    }
-
-
-# ==================================================
-# التصميم
-# ==================================================
+# ==========================================
+# التصميم والعلامة المائية
+# ==========================================
 def apply_styles(dark_mode):
     if dark_mode:
         bg = "#111827"
@@ -363,9 +309,9 @@ def apply_styles(dark_mode):
     )
 
 
-# ==================================================
+# ==========================================
 # الشريط الجانبي
-# ==================================================
+# ==========================================
 with st.sidebar:
     st.markdown("## 📖 حصن المسلم")
 
@@ -381,9 +327,9 @@ with st.sidebar:
 apply_styles(dark_mode)
 
 
-# ==================================================
-# العلامة المائية: نجمة + OMAR MELIGY
-# ==================================================
+# ==========================================
+# العلامة المائية
+# ==========================================
 st.markdown(
     """
     <div class="watermark-center">
@@ -395,9 +341,9 @@ st.markdown(
 )
 
 
-# ==================================================
+# ==========================================
 # رأس الموقع
-# ==================================================
+# ==========================================
 st.markdown(
     """
     <div class="hero">
@@ -409,9 +355,9 @@ st.markdown(
 )
 
 
-# ==================================================
-# التبويبات الرئيسية
-# ==================================================
+# ==========================================
+# التبويبات
+# ==========================================
 tab_quran, tab_qiraat, tab_adhkar, tab_search = st.tabs([
     "📗 القرآن الكريم",
     "📚 القراءات العشر",
@@ -420,9 +366,9 @@ tab_quran, tab_qiraat, tab_adhkar, tab_search = st.tabs([
 ])
 
 
-# ==================================================
-# القرآن الكريم والتلاوات المتاحة
-# ==================================================
+# ==========================================
+# القرآن الكريم
+# ==========================================
 with tab_quran:
     st.subheader("📗 القرآن الكريم")
 
@@ -455,8 +401,8 @@ with tab_quran:
             )
         except Exception:
             st.warning(
-                "تعذر تحميل تلاوة القارئ المختار؛ "
-                "سيتم محاولة تحميل النص."
+                "تعذر تحميل بيانات القارئ. "
+                "سنحاول تحميل نص القرآن."
             )
             surah_data = load_surah_text(surah_number)
 
@@ -473,24 +419,26 @@ with tab_quran:
                 for i, a in enumerate(ayahs)
             }
 
-            selected_ayah = st.selectbox(
+            chosen_label = st.selectbox(
                 "اختر آية للاستماع",
                 list(ayah_options.keys()),
                 key="quran_ayah",
             )
 
-            ayah = ayahs[ayah_options[selected_ayah]]
+            selected_ayah = ayahs[ayah_options[chosen_label]]
 
-            if ayah.get("audio"):
-                st.write(f"استماع — {reciter_name}")
-                st.audio(ayah["audio"])
+            if selected_ayah.get("audio"):
+                st.write(f"تلاوة {reciter_name}")
+                st.audio(selected_ayah["audio"])
 
             st.divider()
             st.markdown("### نص السورة")
 
-            for a in ayahs:
-                text = html.escape(str(a.get("text", "")))
-                number = a.get("numberInSurah", "")
+            for ayah in ayahs:
+                text = html.escape(
+                    str(ayah.get("text", ""))
+                )
+                number = ayah.get("numberInSurah", "")
 
                 st.markdown(
                     f"""
@@ -504,210 +452,203 @@ with tab_quran:
 
     except Exception as error:
         st.error(
-            "تعذر تحميل القرآن. تأكد من اتصال الإنترنت."
+            "تعذر تحميل القرآن الكريم. "
+            "تحقق من اتصال الإنترنت."
         )
         st.caption(str(error))
 
 
-# ==================================================
-# القراءات العشر: مواضع الاختلاف المعتمدة
-# ==================================================
+# ==========================================
+# القراءات العشر والروايات
+# ==========================================
 with tab_qiraat:
     st.subheader("📚 القراءات العشر والروايات")
-    st.write(
-        "يعرض هذا القسم مواضع الاختلاف القرائي التي "
-        "توفرها واجهة البيانات الرسمية، مع نسبتها إلى "
-        "القراء والرواة وفق بيانات المصدر."
+
+    st.info(
+        "اختر القارئ والرواية المطلوبة. "
+        "القائمة التالية للتعريف والاختيار فقط؛ "
+        "لا تعرض نصًا مختلفًا أو تلاوة خاصة بالرواية "
+        "إلا بعد ربطها بمصدر موثوق يدعمها."
     )
 
-    client_id, client_secret = get_qf_credentials()
+    selected_qiraah = st.selectbox(
+        "اختر القراءة",
+        list(QIRAAT.keys()),
+        key="qiraat_reader",
+    )
 
-    if not client_id or not client_secret:
-        st.warning(
-            "قسم القراءات يحتاج بيانات اعتماد Quran Foundation."
-        )
+    selected_riwayah = st.selectbox(
+        "اختر الرواية",
+        QIRAAT[selected_qiraah],
+        key="qiraat_riwayah",
+    )
 
-        st.markdown(
-            """
-            **إعداد البيانات:**
+    st.markdown("### اختيارك")
+    st.write(f"**القارئ:** {selected_qiraah}")
+    st.write(f"**الرواية:** {selected_riwayah}")
 
-            1. سجّل تطبيقًا في [Quran Foundation Developer Console](https://quran.foundation/developers).
-            2. اطلب تفعيل صلاحية `qiraat.read`.
-            3. أضف بيانات الاعتماد إلى ملف
-               `.streamlit/secrets.toml` كما هو موضح أدناه.
-            """
-        )
+    st.warning(
+        "لم يتم ربط هذا الاختيار بعد بنص كامل أو صوت خاص "
+        "بهذه الرواية. القرآن الظاهر في تبويب القرآن "
+        "قد يكون برواية حفص، فلا تعتبره نص الرواية المختارة."
+    )
 
-        st.code(
-            'QF_CLIENT_ID = "ضع_معرف_التطبيق_هنا"\n'
-            'QF_CLIENT_SECRET = "ضع_المفتاح_السري_هنا"',
-            language="toml",
-        )
+    st.markdown(
+        "لإكمال هذا القسم، يلزم مصدر بيانات معتمد "
+        "يوفر نصوص القراءات والتلاوات، مع صلاحية API "
+        "إذا كان مزود الخدمة يشترطها."
+    )
 
-    else:
-        try:
-            surahs = load_surahs()
+    st.link_button(
+        "توثيق Quran Foundation",
+        "https://api-docs.quran.com/",
+    )
 
-            qiraat_surah_options = {
-                f"{s['number']}. {s['name']}": s["number"]
-                for s in surahs
-            }
 
-            qiraat_surah_label = st.selectbox(
-                "اختر السورة لعرض مواضع الاختلاف",
-                list(qiraat_surah_options.keys()),
-                key="qiraat_surah",
+# ==========================================
+# جميع الأذكار
+# ==========================================
+with tab_adhkar:
+    st.subheader("🤲 حصن المسلم — جميع الأبواب")
+
+    try:
+        with st.spinner("جارٍ تحميل الأذكار..."):
+            adhkar = load_all_adhkar()
+
+        if not adhkar:
+            st.warning("لم يتم العثور على أذكار.")
+        else:
+            st.success(
+                f"تم تحميل {len(adhkar)} ذكرًا ودعاءً."
             )
 
-            qiraat_surah_number = qiraat_surah_options[
-                qiraat_surah_label
-            ]
+            categories = sorted({
+                item["القسم"] for item in adhkar
+            })
 
-            with st.spinner("جارٍ تحميل بيانات القراءات..."):
-                qiraat_data = load_qiraat_chapter(
-                    qiraat_surah_number,
-                    client_id,
-                    client_secret,
-                )
-
-            readers = qiraat_data.get("readers", [])
-            transmitters = qiraat_data.get(
-                "transmitters", []
+            category = st.selectbox(
+                "اختر قسم الأذكار",
+                ["كل الأقسام"] + categories,
+                key="adhkar_category",
             )
-            junctures = qiraat_data.get("junctures", [])
 
-            if not readers:
-                st.info(
-                    "لم تُرجع الخدمة قائمة قراء لهذه السورة."
-                )
-            else:
-                reader_by_name = {
-                    r["name"]: r for r in readers
-                }
+            filtered = adhkar
 
-                reader_name = st.selectbox(
-                    "اختر القارئ",
-                    list(reader_by_name.keys()),
-                    key="qiraat_reader",
-                )
-
-                selected_reader = reader_by_name[reader_name]
-                reader_id = selected_reader["id"]
-
-                reader_transmitters = [
-                    t for t in transmitters
-                    if t.get("reader_id") == reader_id
+            if category != "كل الأقسام":
+                filtered = [
+                    item for item in adhkar
+                    if item["القسم"] == category
                 ]
 
-                if reader_transmitters:
-                    transmitter_by_name = {
-                        t["name"]: t
-                        for t in reader_transmitters
-                    }
+            st.caption(
+                f"عدد النصوص المعروضة: {len(filtered)}"
+            )
 
-                    transmitter_name = st.selectbox(
-                        "اختر الراوي",
-                        list(transmitter_by_name.keys()),
-                        key="qiraat_transmitter",
+            for i, item in enumerate(filtered):
+                with st.container(border=True):
+                    st.markdown(f"#### {item['الباب']}")
+
+                    st.markdown(
+                        '<div class="dhikr">'
+                        + html.escape(item["النص"])
+                        + "</div>",
+                        unsafe_allow_html=True,
                     )
 
-                    selected_transmitter = (
-                        transmitter_by_name[transmitter_name]
-                    )
-                    transmitter_id = selected_transmitter["id"]
-                else:
-                    transmitter_name = None
-                    transmitter_id = None
+                    if item["النطق"]:
+                        with st.expander("النطق بالحروف اللاتينية"):
+                            st.write(item["النطق"])
 
-                st.caption(
-                    "مواضع الاختلاف هنا ليست بالضرورة نص السورة "
-                    "كاملًا بالرواية المختارة."
-                )
+                    if item["الترجمة"]:
+                        with st.expander("الترجمة"):
+                            st.write(item["الترجمة"])
 
-                matching = []
-
-                for juncture in junctures:
-                    for reading in juncture.get("readings", []):
-                        matrix = reading.get("matrix", {})
-                        cells = matrix.get("cells", [])
-
-                        attributed = any(
-                            cell.get("reader_id") == reader_id
-                            and (
-                                cell.get("type") == "reader"
-                                and cell.get("transmitter_id") is None
-                            )
-                            for cell in cells
+                    if item["المصدر"]:
+                        st.caption(
+                            f"المصدر: {item['المصدر']}"
                         )
 
-                        if transmitter_id is not None:
-                            attributed = attributed or any(
-                                cell.get("reader_id") == reader_id
-                                and cell.get("transmitter_id")
-                                == transmitter_id
-                                and cell.get("type") == "transmitter"
-                                for cell in cells
-                            )
+                    if st.button(
+                        "عرض النص للنسخ",
+                        key=f"copy_dhikr_{i}",
+                    ):
+                        st.code(item["النص"])
 
-                        if attributed:
-                            matching.append(
-                                (juncture, reading)
-                            )
+    except Exception as error:
+        st.error(
+            "تعذر تحميل الأذكار. تحقق من الإنترنت."
+        )
+        st.caption(str(error))
 
-                if matching:
-                    st.success(
-                        f"عدد النتائج المطابقة: {len(matching)}"
-                    )
 
-                    for i, (juncture, reading) in enumerate(matching):
-                        with st.container(border=True):
-                            st.markdown(
-                                f"**الموضع:** "
-                                f"{juncture.get('verse_key', 'غير محدد')}"
-                            )
+# ==========================================
+# البحث في الأذكار
+# ==========================================
+with tab_search:
+    st.subheader("🔎 البحث في الأذكار")
 
-                            original_text = juncture.get(
-                                "text_uthmani", ""
-                            )
+    query = st.text_input(
+        "اكتب كلمة للبحث",
+        placeholder="مثال: الصباح أو النوم أو سبحان الله",
+        key="adhkar_search",
+    )
 
-                            if original_text:
-                                st.markdown("**موضع الاختلاف:**")
-                                st.markdown(
-                                    '<div class="arabic">'
-                                    + html.escape(str(original_text))
-                                    + "</div>",
-                                    unsafe_allow_html=True,
-                                )
+    if query.strip():
+        try:
+            adhkar = load_all_adhkar()
+            term = query.strip()
 
-                            reading_text = reading.get(
-                                "text_uthmani"
-                            ) or reading.get("text", "")
+            results = [
+                item for item in adhkar
+                if term in item["النص"]
+                or term in item["الباب"]
+                or term in item["القسم"]
+                or term in item["المصدر"]
+            ]
 
-                            st.markdown("**النص المنسوب لهذه القراءة:**")
-                            st.markdown(
-                                '<div class="dhikr">'
-                                + html.escape(str(reading_text))
-                                + "</div>",
-                                unsafe_allow_html=True,
-                            )
+            st.write(f"عدد النتائج: {len(results)}")
 
+            if results:
+                for i, item in enumerate(results):
+                    with st.container(border=True):
+                        st.markdown(f"#### {item['الباب']}")
+
+                        st.markdown(
+                            '<div class="dhikr">'
+                            + html.escape(item["النص"])
+                            + "</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                        st.caption(f"القسم: {item['القسم']}")
+
+                        if item["المصدر"]:
                             st.caption(
-                                f"القارئ: {reader_name}"
-                                + (
-                                    f" — الراوي: {transmitter_name}"
-                                    if transmitter_name else ""
-                                )
+                                f"المصدر: {item['المصدر']}"
                             )
+            else:
+                st.info("لا توجد نتائج مطابقة.")
 
-                            if reading.get("translation"):
-                                with st.expander("الشرح أو الترجمة المتاحة"):
-                                    st.write(reading["translation"])
+        except Exception:
+            st.error(
+                "تعذر البحث بسبب مشكلة في تحميل الأذكار."
+            )
+    else:
+        st.info("اكتب كلمة للبحث في الأذكار.")
 
-                else:
-                    st.info(
-                        "لم تُرجع الخدمة مواضع اختلاف مطابقة "
-                        "للاختيار في هذه السورة."
-                    )
 
-                st.warning(
-                    "هذا القسم يعرض 
+# ==========================================
+# تذييل الموقع
+# ==========================================
+st.markdown(
+    """
+    <div class="footer">
+        حصن المسلم والقرآن الكريم
+        <br>
+        صدقة جارية بإذن الله
+        <br>
+        OMAR MELIGY
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
