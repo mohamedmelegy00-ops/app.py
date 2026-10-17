@@ -3,16 +3,13 @@ import html
 import requests
 import streamlit as st
 
-# ==========================================
-# إعدادات الموقع
-# ==========================================
 st.set_page_config(
     page_title="حصن المسلم والقرآن الكريم",
     page_icon="📖",
     layout="wide",
 )
 
-QURAN_API = "https://api.alquran.cloud/v1"
+API = "https://api.alquran.cloud/v1"
 
 ADHKAR_URL = (
     "https://raw.githubusercontent.com/"
@@ -22,177 +19,114 @@ ADHKAR_URL = (
 
 RECITERS = {
     "مشاري العفاسي": "ar.alafasy",
-    "عبد الرحمن السديس": "ar.abdurrahmaansudais",
     "محمود خليل الحصري": "ar.husary",
     "محمد صديق المنشاوي": "ar.minshawi",
-    "أبو بكر الشاطري": "ar.shaatree",
-    "علي الحذيفي": "ar.hudhaify",
+    "عبد الرحمن السديس": "ar.abdurrahmaansudais",
     "ماهر المعيقلي": "ar.mahermuaiqly",
     "أحمد العجمي": "ar.ahmedajamy",
+    "أبو بكر الشاطري": "ar.shaatree",
+    "علي الحذيفي": "ar.hudhaify",
     "محمد أيوب": "ar.muhammadayyoub",
     "سعود الشريم": "ar.saoodshuraym",
 }
 
-QIRAAT = {
-    "نافع المدني": [
-        "قالون عن نافع",
-        "ورش عن نافع",
-    ],
-    "ابن كثير المكي": [
-        "البزي عن ابن كثير",
-        "قنبل عن ابن كثير",
-    ],
-    "أبو عمرو البصري": [
-        "الدوري عن أبي عمرو",
-        "السوسي عن أبي عمرو",
-    ],
-    "ابن عامر الشامي": [
-        "هشام عن ابن عامر",
-        "ابن ذكوان عن ابن عامر",
-    ],
-    "عاصم الكوفي": [
-        "شعبة عن عاصم",
-        "حفص عن عاصم",
-    ],
-    "حمزة الكوفي": [
-        "خلف عن حمزة",
-        "خلاد عن حمزة",
-    ],
-    "الكسائي الكوفي": [
-        "أبو الحارث عن الكسائي",
-        "الدوري عن الكسائي",
-    ],
-    "أبو جعفر المدني": [
-        "ابن وردان عن أبي جعفر",
-        "ابن جماز عن أبي جعفر",
-    ],
-    "يعقوب الحضرمي": [
-        "رويس عن يعقوب",
-        "روح عن يعقوب",
-    ],
-    "خلف العاشر": [
-        "إسحاق عن خلف",
-        "إدريس عن خلف",
-    ],
+RIWAYAT = {
+    "حفص عن عاصم": "متاح نص القرآن الأساسي من المصدر الحالي.",
+    "ورش عن نافع": (
+        "يلزم ربط مصدر يدعم نص ورش وتلاوتها قبل عرضهما."
+    ),
 }
 
-
-# ==========================================
+# ------------------------------------------
 # تحميل البيانات
-# ==========================================
-def get_json(url):
-    response = requests.get(
-        url,
-        timeout=30,
-    )
+# ------------------------------------------
+def fetch_json(url):
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
-
-    data = response.json()
-
-    if data.get("code", 200) != 200:
-        raise ValueError("تعذر تحميل البيانات.")
-
-    return data
+    return response.json()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_surahs():
-    return get_json(
-        f"{QURAN_API}/surah"
+    return fetch_json(f"{API}/surah")["data"]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_quran_surah(number):
+    return fetch_json(
+        f"{API}/surah/{number}/quran-uthmani"
     )["data"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_surah(surah_number, edition):
-    url = (
-        f"{QURAN_API}/surah/"
-        f"{surah_number}/{edition}"
-    )
-    return get_json(url)["data"]
+def load_audio_surah(number, edition):
+    return fetch_json(
+        f"{API}/surah/{number}/{edition}"
+    )["data"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_surah_text(surah_number):
-    url = (
-        f"{QURAN_API}/surah/"
-        f"{surah_number}/quran-uthmani"
-    )
-    return get_json(url)["data"]
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def load_all_adhkar():
-    response = requests.get(
-        ADHKAR_URL,
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    data = response.json()
-    result = []
+def load_adhkar():
+    data = fetch_json(ADHKAR_URL)
+    items = []
 
     for segment in data.get("segments", []):
         segment_name = segment.get(
-            "segment_name",
-            "أذكار متنوعة",
+            "segment_name", "أذكار متنوعة"
         )
 
         for category in segment.get("categories", []):
             category_name = category.get(
-                "category_name",
-                segment_name,
+                "category_name", segment_name
             )
 
             for title in category.get("titles", []):
                 title_name = title.get(
-                    "title_name",
-                    category_name,
+                    "title_name", category_name
                 )
 
                 for dua in title.get("duas", []):
-                    arabic_text = str(
+                    text = str(
                         dua.get("arabic", "")
                     ).strip()
 
-                    if not arabic_text:
-                        continue
+                    if text:
+                        items.append({
+                            "category": category_name,
+                            "title": title_name,
+                            "text": text,
+                            "source": str(
+                                dua.get("source", "")
+                            ),
+                            "translation": str(
+                                dua.get("translation", "")
+                            ),
+                            "latin": str(
+                                dua.get("latin", "")
+                            ),
+                        })
 
-                    result.append({
-                        "القسم": category_name,
-                        "الباب": title_name,
-                        "النص": arabic_text,
-                        "المصدر": str(
-                            dua.get("source", "")
-                        ),
-                        "الترجمة": str(
-                            dua.get("translation", "")
-                        ),
-                        "النطق": str(
-                            dua.get("latin", "")
-                        ),
-                    })
-
-    return result
+    return items
 
 
-# ==========================================
-# التصميم والعلامة المائية
-# ==========================================
-def apply_styles(dark_mode):
-    if dark_mode:
-        bg = "#111827"
+# ------------------------------------------
+# التصميم والأزرار المستديرة
+# ------------------------------------------
+def set_styles(dark):
+    if dark:
+        bg = "#101827"
         card = "#1f2937"
         fg = "#f9fafb"
-        muted = "#d1d5db"
-        border = "#374151"
+        muted = "#cbd5e1"
         accent = "#34d399"
+        border = "#374151"
     else:
         bg = "#f8fafc"
         card = "#ffffff"
         fg = "#172033"
         muted = "#475569"
-        border = "#e2e8f0"
         accent = "#047857"
+        border = "#dbe3ed"
 
     st.markdown(
         f"""
@@ -211,9 +145,8 @@ def apply_styles(dark_mode):
         }}
 
         .block-container {{
-            max-width: 1200px;
-            padding-top: 1.5rem;
-            padding-bottom: 3rem;
+            max-width: 1150px;
+            padding: 1rem 1rem 3rem;
         }}
 
         h1, h2, h3, p, label {{
@@ -221,86 +154,124 @@ def apply_styles(dark_mode):
         }}
 
         .hero {{
-            background: linear-gradient(135deg, {card}, {bg});
+            background: {card};
             border: 1px solid {border};
-            border-radius: 20px;
-            padding: 22px 14px;
+            border-radius: 24px;
             text-align: center;
-            margin-bottom: 22px;
+            padding: 20px 12px;
+            margin-bottom: 18px;
         }}
 
         .hero h1 {{
             color: {accent};
             font-family: 'Amiri', serif;
-            font-size: clamp(27px, 5vw, 43px);
+            font-size: clamp(27px, 5vw, 42px);
         }}
 
         .hero p {{
             color: {muted};
         }}
 
-        .arabic, .dhikr {{
+        /* أزرار الأقسام بشكل مستدير */
+        div[role="radiogroup"] {{
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 9px;
+            background: transparent;
+        }}
+
+        div[role="radiogroup"] label {{
+            border: 1px solid {border};
+            border-radius: 999px !important;
+            background: {card};
+            padding: 10px 16px !important;
+            min-height: 42px;
+            margin: 0 !important;
+            transition: 0.2s;
+        }}
+
+        div[role="radiogroup"] label:has(input:checked) {{
+            background: {accent};
+            border-color: {accent};
+            color: white;
+        }}
+
+        div[role="radiogroup"] label p {{
+            margin: 0;
+            font-weight: 600;
+        }}
+
+        /* بقية الأزرار */
+        div.stButton > button,
+        div.stDownloadButton > button {{
+            border-radius: 999px !important;
+            min-height: 44px;
+            border: 1px solid {border};
+            transition: 0.2s;
+        }}
+
+        div.stButton > button:hover {{
+            border-color: {accent};
+            color: {accent};
+        }}
+
+        div[data-testid="stVerticalBlockBorderWrapper"] {{
+            border-radius: 18px;
+        }}
+
+        .arabic {{
             font-family: 'Amiri', serif;
-            font-size: clamp(23px, 3vw, 30px);
-            line-height: 2.1;
+            font-size: clamp(23px, 4vw, 31px);
+            line-height: 2;
             direction: rtl;
             text-align: right;
             color: {fg};
             overflow-wrap: anywhere;
-            white-space: pre-wrap;
         }}
 
-        .ayah-number {{
-            color: {accent};
-            font-size: 16px;
-            font-weight: bold;
-            margin-left: 8px;
-        }}
-
-        .watermark-center {{
+        .watermark {{
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: {accent};
-            opacity: 0.12;
-            font-family: Arial, sans-serif;
-            font-size: clamp(24px, 5vw, 58px);
-            font-weight: 900;
-            text-align: center;
-            white-space: nowrap;
+            z-index: 999;
             pointer-events: none;
             user-select: none;
-            z-index: 999;
+            text-align: center;
+            color: {accent};
+            opacity: 0.14;
+            font-family: Arial, sans-serif;
+            font-weight: 900;
+            white-space: nowrap;
+            font-size: clamp(23px, 5vw, 52px);
         }}
 
-        .watermark-star {{
+        .watermark .star {{
             font-size: 1.5em;
-            line-height: 1.15;
-            margin-bottom: 5px;
-        }}
-
-        .watermark-name {{
-            letter-spacing: 2px;
+            line-height: 1.1;
         }}
 
         .footer {{
             text-align: center;
-            font-size: 12px;
             color: {muted};
             border-top: 1px solid {border};
-            padding: 15px;
-            margin-top: 28px;
+            margin-top: 30px;
+            padding: 20px 5px;
         }}
 
-        @media (max-width: 640px) {{
+        @media(max-width: 600px) {{
             .block-container {{
-                padding-left: 12px;
-                padding-right: 12px;
+                padding-left: 10px;
+                padding-right: 10px;
             }}
 
-            .watermark-center {{
-                font-size: 24px;
+            div[role="radiogroup"] label {{
+                padding: 8px 12px !important;
+            }}
+
+            .watermark {{
+                font-size: 23px;
             }}
         }}
         </style>
@@ -309,9 +280,9 @@ def apply_styles(dark_mode):
     )
 
 
-# ==========================================
+# ------------------------------------------
 # الشريط الجانبي
-# ==========================================
+# ------------------------------------------
 with st.sidebar:
     st.markdown("## 📖 حصن المسلم")
 
@@ -320,216 +291,150 @@ with st.sidebar:
         value=False,
     )
 
-    st.divider()
-    st.caption("القرآن الكريم والأذكار والقراءات")
+set_styles(dark_mode)
 
-
-apply_styles(dark_mode)
-
-
-# ==========================================
+# ------------------------------------------
 # العلامة المائية
-# ==========================================
+# ------------------------------------------
 st.markdown(
     """
-    <div class="watermark-center">
-        <div class="watermark-star">★</div>
-        <div class="watermark-name">OMAR MELIGY</div>
+    <div class="watermark">
+        <div class="star">★</div>
+        <div>OMAR MELIGY</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-
-# ==========================================
+# ------------------------------------------
 # رأس الموقع
-# ==========================================
+# ------------------------------------------
 st.markdown(
     """
     <div class="hero">
         <h1>حصن المسلم والقرآن الكريم</h1>
-        <p>القرآن الكريم • القراءات العشر • الأذكار • الدعاء</p>
+        <p>اقرأ القرآن، واستمع للتلاوة، وتصفّح الأذكار</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-
-# ==========================================
-# التبويبات
-# ==========================================
-tab_quran, tab_qiraat, tab_adhkar, tab_search = st.tabs([
+# ------------------------------------------
+# أزرار التنقل المستديرة
+# ------------------------------------------
+sections = [
     "📗 القرآن الكريم",
-    "📚 القراءات العشر",
-    "🤲 جميع الأذكار",
+    "🤲 الأذكار",
+    "📚 القراءات",
     "🔎 البحث",
-])
+]
 
+section = st.radio(
+    "اختر القسم",
+    sections,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="main_section",
+)
 
-# ==========================================
-# القرآن الكريم
-# ==========================================
-with tab_quran:
+st.divider()
+
+# ------------------------------------------
+# قسم القرآن الكريم
+# ------------------------------------------
+if section == "📗 القرآن الكريم":
     st.subheader("📗 القرآن الكريم")
 
     try:
         surahs = load_surahs()
 
         surah_options = {
-            f"{s['number']}. {s['name']}": s["number"]
+            f"{s['number']} - {s['name']}": s["number"]
             for s in surahs
         }
 
-        selected_label = st.selectbox(
+        selected_surah = st.selectbox(
             "اختر السورة",
             list(surah_options.keys()),
-            key="quran_surah",
         )
 
-        surah_number = surah_options[selected_label]
+        number = surah_options[selected_surah]
 
-        reciter_name = st.selectbox(
+        reciter = st.selectbox(
             "اختر القارئ",
             list(RECITERS.keys()),
-            key="quran_reciter",
         )
+
+        text_data = load_quran_surah(number)
 
         try:
-            surah_data = load_surah(
-                surah_number,
-                RECITERS[reciter_name],
+            audio_data = load_audio_surah(
+                number,
+                RECITERS[reciter],
             )
         except Exception:
+            audio_data = None
             st.warning(
-                "تعذر تحميل بيانات القارئ. "
-                "سنحاول تحميل نص القرآن."
-            )
-            surah_data = load_surah_text(surah_number)
-
-        st.markdown(
-            f"### {surah_data.get('name', selected_label)}"
-        )
-
-        ayahs = surah_data.get("ayahs", [])
-        st.caption(f"عدد الآيات: {len(ayahs)}")
-
-        if ayahs:
-            ayah_options = {
-                f"الآية {a.get('numberInSurah', i + 1)}": i
-                for i, a in enumerate(ayahs)
-            }
-
-            chosen_label = st.selectbox(
-                "اختر آية للاستماع",
-                list(ayah_options.keys()),
-                key="quran_ayah",
+                "تعذر تحميل صوت هذا القارئ حاليًا."
             )
 
-            selected_ayah = ayahs[ayah_options[chosen_label]]
+        if audio_data:
+            audio_ayahs = audio_data.get("ayahs", [])
 
-            if selected_ayah.get("audio"):
-                st.write(f"تلاوة {reciter_name}")
-                st.audio(selected_ayah["audio"])
+            if audio_ayahs:
+                st.markdown(f"**تلاوة سورة {selected_surah}**")
 
-            st.divider()
-            st.markdown("### نص السورة")
+                first_audio = audio_ayahs[0].get("audio")
+                if first_audio:
+                    st.audio(first_audio)
 
-            for ayah in ayahs:
-                text = html.escape(
-                    str(ayah.get("text", ""))
-                )
-                number = ayah.get("numberInSurah", "")
+        st.markdown("### نص السورة")
 
-                st.markdown(
-                    f"""
-                    <div class="arabic">
-                        {text}
-                        <span class="ayah-number">﴿{number}﴾</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+        for ayah in text_data.get("ayahs", []):
+            ayah_text = html.escape(
+                str(ayah.get("text", ""))
+            )
+            ayah_number = ayah.get("numberInSurah", "")
+
+            st.markdown(
+                f'<div class="arabic">'
+                f'{ayah_text} '
+                f'<span>﴿{ayah_number}﴾</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     except Exception as error:
         st.error(
-            "تعذر تحميل القرآن الكريم. "
-            "تحقق من اتصال الإنترنت."
+            "تعذر تحميل القرآن. تأكد من الإنترنت."
         )
         st.caption(str(error))
 
 
-# ==========================================
-# القراءات العشر والروايات
-# ==========================================
-with tab_qiraat:
-    st.subheader("📚 القراءات العشر والروايات")
-
-    st.info(
-        "اختر القارئ والرواية المطلوبة. "
-        "القائمة التالية للتعريف والاختيار فقط؛ "
-        "لا تعرض نصًا مختلفًا أو تلاوة خاصة بالرواية "
-        "إلا بعد ربطها بمصدر موثوق يدعمها."
-    )
-
-    selected_qiraah = st.selectbox(
-        "اختر القراءة",
-        list(QIRAAT.keys()),
-        key="qiraat_reader",
-    )
-
-    selected_riwayah = st.selectbox(
-        "اختر الرواية",
-        QIRAAT[selected_qiraah],
-        key="qiraat_riwayah",
-    )
-
-    st.markdown("### اختيارك")
-    st.write(f"**القارئ:** {selected_qiraah}")
-    st.write(f"**الرواية:** {selected_riwayah}")
-
-    st.warning(
-        "لم يتم ربط هذا الاختيار بعد بنص كامل أو صوت خاص "
-        "بهذه الرواية. القرآن الظاهر في تبويب القرآن "
-        "قد يكون برواية حفص، فلا تعتبره نص الرواية المختارة."
-    )
-
-    st.markdown(
-        "لإكمال هذا القسم، يلزم مصدر بيانات معتمد "
-        "يوفر نصوص القراءات والتلاوات، مع صلاحية API "
-        "إذا كان مزود الخدمة يشترطها."
-    )
-
-    st.link_button(
-        "توثيق Quran Foundation",
-        "https://api-docs.quran.com/",
-    )
-
-
-# ==========================================
-# جميع الأذكار
-# ==========================================
-with tab_adhkar:
-    st.subheader("🤲 حصن المسلم — جميع الأبواب")
+# ------------------------------------------
+# قسم الأذكار
+# ------------------------------------------
+elif section == "🤲 الأذكار":
+    st.subheader("🤲 حصن المسلم")
 
     try:
         with st.spinner("جارٍ تحميل الأذكار..."):
-            adhkar = load_all_adhkar()
+            adhkar = load_adhkar()
 
         if not adhkar:
-            st.warning("لم يتم العثور على أذكار.")
+            st.warning("لم يتم العثور على الأذكار.")
         else:
             st.success(
-                f"تم تحميل {len(adhkar)} ذكرًا ودعاءً."
+                f"تم تحميل {len(adhkar)} نصًا من المصدر."
             )
 
             categories = sorted({
-                item["القسم"] for item in adhkar
+                item["category"] for item in adhkar
             })
 
             category = st.selectbox(
                 "اختر قسم الأذكار",
                 ["كل الأقسام"] + categories,
-                key="adhkar_category",
             )
 
             filtered = adhkar
@@ -537,109 +442,134 @@ with tab_adhkar:
             if category != "كل الأقسام":
                 filtered = [
                     item for item in adhkar
-                    if item["القسم"] == category
+                    if item["category"] == category
                 ]
 
-            st.caption(
-                f"عدد النصوص المعروضة: {len(filtered)}"
-            )
-
-            for i, item in enumerate(filtered):
+            for index, item in enumerate(filtered):
                 with st.container(border=True):
-                    st.markdown(f"#### {item['الباب']}")
+                    st.markdown(f"### {item['title']}")
 
                     st.markdown(
-                        '<div class="dhikr">'
-                        + html.escape(item["النص"])
-                        + "</div>",
+                        '<div class="arabic">'
+                        + html.escape(item["text"])
+                        + '</div>',
                         unsafe_allow_html=True,
                     )
 
-                    if item["النطق"]:
-                        with st.expander("النطق بالحروف اللاتينية"):
-                            st.write(item["النطق"])
-
-                    if item["الترجمة"]:
-                        with st.expander("الترجمة"):
-                            st.write(item["الترجمة"])
-
-                    if item["المصدر"]:
+                    if item["source"]:
                         st.caption(
-                            f"المصدر: {item['المصدر']}"
+                            "المصدر: " + item["source"]
                         )
 
-                    if st.button(
-                        "عرض النص للنسخ",
-                        key=f"copy_dhikr_{i}",
-                    ):
-                        st.code(item["النص"])
+                    with st.expander("تفاصيل الذكر"):
+                        if item["translation"]:
+                            st.write(item["translation"])
 
-    except Exception as error:
+                        if item["latin"]:
+                            st.write(item["latin"])
+
+                        st.code(item["text"])
+
+    except Exception:
         st.error(
-            "تعذر تحميل الأذكار. تحقق من الإنترنت."
+            "تعذر تحميل الأذكار. تحقق من اتصال الإنترنت."
         )
-        st.caption(str(error))
 
 
-# ==========================================
-# البحث في الأذكار
-# ==========================================
-with tab_search:
+# ------------------------------------------
+# قسم القراءات والروايات
+# ------------------------------------------
+elif section == "📚 القراءات":
+    st.subheader("📚 القراءات والروايات")
+
+    riwayah = st.selectbox(
+        "اختر الرواية",
+        list(RIWAYAT.keys()),
+    )
+
+    if riwayah == "حفص عن عاصم":
+        st.success(RIWAYAT[riwayah])
+        st.info(
+            "النص المعروض في قسم القرآن هو النص الأساسي "
+            "من مصدر القرآن المستخدم. تحقق من بيانات "
+            "المصدر قبل اعتماد طبعة محددة."
+        )
+    else:
+        st.warning(RIWAYAT[riwayah])
+
+    st.markdown("### القراءات العشر")
+
+    readers = [
+        "نافع المدني",
+        "ابن كثير المكي",
+        "أبو عمرو البصري",
+        "ابن عامر الشامي",
+        "عاصم الكوفي",
+        "حمزة الكوفي",
+        "الكسائي الكوفي",
+        "أبو جعفر المدني",
+        "يعقوب الحضرمي",
+        "خلف العاشر",
+    ]
+
+    reader = st.selectbox(
+        "اختر القارئ",
+        readers,
+    )
+
+    st.write(f"القراءة المختارة: **{reader}**")
+
+    st.info(
+        "اختيار القارئ هنا لا يغيّر نص القرآن تلقائيًا. "
+        "يلزم ربط كل قراءة ورواية بمصدر يدعم نصها "
+        "وصوتها فعلًا."
+    )
+
+# ------------------------------------------
+# قسم البحث
+# ------------------------------------------
+elif section == "🔎 البحث":
     st.subheader("🔎 البحث في الأذكار")
 
     query = st.text_input(
         "اكتب كلمة للبحث",
-        placeholder="مثال: الصباح أو النوم أو سبحان الله",
-        key="adhkar_search",
+        placeholder="مثال: الصباح أو النوم",
     )
 
     if query.strip():
         try:
-            adhkar = load_all_adhkar()
+            adhkar = load_adhkar()
             term = query.strip()
 
             results = [
                 item for item in adhkar
-                if term in item["النص"]
-                or term in item["الباب"]
-                or term in item["القسم"]
-                or term in item["المصدر"]
+                if term in item["text"]
+                or term in item["title"]
+                or term in item["category"]
+                or term in item["source"]
             ]
 
             st.write(f"عدد النتائج: {len(results)}")
 
-            if results:
-                for i, item in enumerate(results):
-                    with st.container(border=True):
-                        st.markdown(f"#### {item['الباب']}")
+            for item in results:
+                with st.container(border=True):
+                    st.markdown(f"### {item['title']}")
 
-                        st.markdown(
-                            '<div class="dhikr">'
-                            + html.escape(item["النص"])
-                            + "</div>",
-                            unsafe_allow_html=True,
-                        )
+                    st.markdown(
+                        '<div class="arabic">'
+                        + html.escape(item["text"])
+                        + '</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                        st.caption(f"القسم: {item['القسم']}")
-
-                        if item["المصدر"]:
-                            st.caption(
-                                f"المصدر: {item['المصدر']}"
-                            )
-            else:
-                st.info("لا توجد نتائج مطابقة.")
+                    st.caption(item["category"])
 
         except Exception:
-            st.error(
-                "تعذر البحث بسبب مشكلة في تحميل الأذكار."
-            )
-    else:
-        st.info("اكتب كلمة للبحث في الأذكار.")
+            st.error("تعذر تحميل بيانات البحث.")
 
-
-# ==========================================
+# ------------------------------------------
 # تذييل الموقع
-# ==========================================
+# ------------------------------------------
 st.markdown(
     """
     <div class="footer">
@@ -647,8 +577,9 @@ st.markdown(
         <br>
         صدقة جارية بإذن الله
         <br>
-        OMAR MELIGY
+        ⭐ OMAR MELIGY
     </div>
     """,
     unsafe_allow_html=True,
-)
+    )
+                                
