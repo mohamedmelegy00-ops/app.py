@@ -1,373 +1,556 @@
 
-import streamlit as st
+import html
 import requests
-import json
-from pathlib import Path
+import streamlit as st
 
+# =====================================
+# إعدادات الموقع
+# =====================================
 st.set_page_config(
     page_title="حصن المسلم والقرآن الكريم",
     page_icon="📖",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="wide",
 )
 
-API = "https://api.alquran.cloud/v1"
+QURAN_API = "https://api.alquran.cloud/v1"
 
-# القراء: تُختبر الإصدارات المتاحة من الخدمة عند التشغيل
-RECITERS = [
-    ("مشاري العفاسي", "ar.alafasy"),
-    ("عبدالباسط عبدالصمد", "ar.abdulbasit"),
-    ("عبدالرحمن السديس", "ar.abdurrahmaansudais"),
-    ("محمود خليل الحصري", "ar.husary"),
-    ("محمد صديق المنشاوي", "ar.minshawi"),
-    ("ماهر المعيقلي", "ar.mahermuaiqly"),
-    ("سعود الشريم", "ar.saoodshuraym"),
-    ("أبو بكر الشاطري", "ar.shaatree"),
-    ("محمد أيوب", "ar.muhammadayyoub"),
-    ("محمد جبريل", "ar.muhammadjibreel"),
-]
+ADHKAR_URL = (
+    "https://raw.githubusercontent.com/"
+    "sehalhussain/Hadith-Dua-assets/"
+    "main/duas-adhkar-hisnul-muslim.json"
+)
 
-ADHKAR = [
-    {
-        "القسم": "أذكار الصباح والمساء",
-        "النص": "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ",
-        "التكرار": 100
-    },
-    {
-        "القسم": "أذكار الصباح والمساء",
-        "النص": "أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ",
-        "التكرار": 100
-    },
-    {
-        "القسم": "أذكار النوم",
-        "النص": "بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا",
-        "التكرار": 1
-    },
-    {
-        "القسم": "أذكار الاستيقاظ",
-        "النص": "الْحَمْدُ لِلَّهِ الَّذِي أَحْيَانَا بَعْدَ مَا أَمَاتَنَا وَإِلَيْهِ النُّشُورُ",
-        "التكرار": 1
-    },
-    {
-        "القسم": "أذكار الصلاة",
-        "النص": "أَسْتَغْفِرُ اللَّهَ",
-        "التكرار": 3
-    },
-    {
-        "القسم": "أذكار متنوعة",
-        "النص": "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ",
-        "التكرار": 1
-    },
-    {
-        "القسم": "أذكار متنوعة",
-        "النص": "اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ",
-        "التكرار": 10
-    },
-]
-
-# تنسيق عربي وتصميم متجاوب
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Amiri:wght@400;700&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'Cairo', sans-serif;
+RECITERS = {
+    "مشاري العفاسي": "ar.alafasy",
+    "عبد الرحمن السديس": "ar.abdurrahmaansudais",
+    "محمود خليل الحصري": "ar.husary",
+    "محمد صديق المنشاوي": "ar.minshawi",
+    "أبو بكر الشاطري": "ar.shaatree",
+    "علي الحذيفي": "ar.hudhaify",
+    "ماهر المعيقلي": "ar.mahermuaiqly",
+    "أحمد العجمي": "ar.ahmedajamy",
+    "محمد أيوب": "ar.muhammadayyoub",
+    "سعود الشريم": "ar.saoodshuraym",
 }
 
-.block-container {
-    max-width: 850px;
-    padding-top: 1rem;
-}
 
-.header {
-    text-align: center;
-    padding: 15px 0;
-}
+# =====================================
+# تحميل البيانات
+# =====================================
+def get_json(url):
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    data = response.json()
 
-.header h1 {
-    font-family: 'Amiri', serif;
-    font-size: 2.2rem;
-}
+    if data.get("code", 200) != 200:
+        raise ValueError("تعذر تحميل البيانات")
 
-.ayah {
-    font-family: 'Amiri', serif;
-    font-size: 1.65rem;
-    line-height: 2.2;
-    text-align: right;
-    direction: rtl;
-    padding: 10px 0;
-}
+    return data
 
-.dhikr {
-    font-family: 'Amiri', serif;
-    font-size: 1.8rem;
-    line-height: 2;
-    text-align: center;
-    direction: rtl;
-    padding: 25px 5px;
-}
 
-.watermark {
-    text-align: center;
-    opacity: 0.55;
-    padding: 25px 0 5px;
-    font-size: 13px;
-}
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_surahs():
+    return get_json(f"{QURAN_API}/surah")["data"]
 
-.stButton button {
-    min-height: 45px;
-    border-radius: 12px;
-}
 
-@media (max-width: 600px) {
-    .header h1 { font-size: 1.7rem; }
-    .ayah { font-size: 1.35rem; }
-    .dhikr { font-size: 1.5rem; }
-}
-</style>
-""", unsafe_allow_html=True)
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_surah(surah_number, edition):
+    url = f"{QURAN_API}/surah/{surah_number}/{edition}"
+    return get_json(url)["data"]
 
-# إعدادات الجلسة
-if "dark" not in st.session_state:
-    st.session_state.dark = True
 
-if "counts" not in st.session_state:
-    st.session_state.counts = {}
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_surah_text(surah_number):
+    url = f"{QURAN_API}/surah/{surah_number}/quran-uthmani"
+    return get_json(url)["data"]
 
-if "dhikr_index" not in st.session_state:
-    st.session_state.dhikr_index = 0
 
-if "dhikr_category" not in st.session_state:
-    st.session_state.dhikr_category = "أذكار الصباح والمساء"
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_all_adhkar():
+    response = requests.get(ADHKAR_URL, timeout=30)
+    response.raise_for_status()
+    data = response.json()
 
-# الوضع الليلي والنهاري
-if st.session_state.dark:
-    st.markdown("""
-    <style>
-    .stApp {background-color:#101916;color:#f2f4ee;}
-    </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <style>
-    .stApp {background-color:#fbfaf5;color:#1c2d24;}
-    </style>
-    """, unsafe_allow_html=True)
+    result = []
 
-st.markdown("""
-<div class="header">
-<h1>📖 حصن المسلم والقرآن الكريم</h1>
-<p>القرآن الكريم • الأذكار • التلاوة</p>
-</div>
-""", unsafe_allow_html=True)
+    for segment in data.get("segments", []):
+        segment_name = segment.get(
+            "segment_name", "أذكار متنوعة"
+        )
 
-# العلامة المائية وتغيير المظهر
-c1, c2 = st.columns([3, 2])
+        for category in segment.get("categories", []):
+            category_name = category.get(
+                "category_name", segment_name
+            )
 
-with c1:
-    watermark = st.text_input(
-        "العلامة المائية",
-        value="حصن المسلم",
-        label_visibility="collapsed",
-        placeholder="اكتب اسم العلامة المائية"
+            for title in category.get("titles", []):
+                title_name = title.get(
+                    "title_name", category_name
+                )
+
+                for dua in title.get("duas", []):
+                    text = str(
+                        dua.get("arabic", "")
+                    ).strip()
+
+                    if not text:
+                        continue
+
+                    result.append({
+                        "القسم": category_name,
+                        "الباب": title_name,
+                        "النص": text,
+                        "المصدر": str(
+                            dua.get("source", "")
+                        ),
+                        "الترجمة": str(
+                            dua.get("translation", "")
+                        ),
+                        "النطق": str(
+                            dua.get("latin", "")
+                        ),
+                    })
+
+    return result
+
+
+# =====================================
+# التصميم والعلامة المائية
+# =====================================
+def apply_styles(dark_mode):
+    if dark_mode:
+        background = "#111827"
+        card = "#1f2937"
+        text_color = "#f9fafb"
+        muted = "#d1d5db"
+        border = "#374151"
+        accent = "#34d399"
+    else:
+        background = "#f8fafc"
+        card = "#ffffff"
+        text_color = "#172033"
+        muted = "#475569"
+        border = "#e2e8f0"
+        accent = "#047857"
+
+    st.markdown(
+        f"""
+        <style>
+        @import url(
+          'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap'
+        );
+
+        .stApp {{
+            background: {background};
+            color: {text_color};
+        }}
+
+        [data-testid="stSidebar"] {{
+            background: {card};
+        }}
+
+        .block-container {{
+            padding-top: 1.5rem;
+            padding-bottom: 3rem;
+            max-width: 1200px;
+        }}
+
+        h1, h2, h3, p, label {{
+            color: {text_color};
+        }}
+
+        .hero {{
+            background: linear-gradient(
+                135deg, {card}, {background}
+            );
+            border: 1px solid {border};
+            border-radius: 20px;
+            padding: 24px 16px;
+            text-align: center;
+            margin-bottom: 22px;
+        }}
+
+        .hero h1 {{
+            color: {accent};
+            font-family: 'Amiri', serif;
+            font-size: clamp(27px, 5vw, 43px);
+        }}
+
+        .hero p {{
+            color: {muted};
+        }}
+
+        .arabic, .dhikr {{
+            font-family: 'Amiri', serif;
+            font-size: clamp(23px, 3vw, 30px);
+            line-height: 2.1;
+            direction: rtl;
+            text-align: right;
+            color: {text_color};
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }}
+
+        .ayah-number {{
+            color: {accent};
+            font-size: 16px;
+            font-weight: bold;
+            margin-left: 8px;
+        }}
+
+        /*
+        العلامة المائية في منتصف الشاشة.
+        لا تعطل الضغط على الأزرار أو قراءة المحتوى.
+        */
+        .watermark-center {{
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: {accent};
+            opacity: 0.10;
+            font-family: Arial, sans-serif;
+            font-size: clamp(27px, 5vw, 62px);
+            font-weight: 900;
+            text-align: center;
+            white-space: nowrap;
+            pointer-events: none;
+            user-select: none;
+            z-index: 999;
+        }}
+
+        .watermark-footer {{
+            color: {muted};
+            opacity: 0.75;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 28px;
+            padding: 12px;
+            border-top: 1px solid {border};
+        }}
+
+        [data-testid="stVerticalBlockBorderWrapper"] {{
+            border-radius: 14px;
+        }}
+
+        .stButton button {{
+            border-radius: 10px;
+        }}
+
+        @media (max-width: 640px) {{
+            .block-container {{
+                padding-left: 12px;
+                padding-right: 12px;
+            }}
+
+            .hero {{
+                padding: 18px 10px;
+            }}
+
+            .watermark-center {{
+                font-size: 27px;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-with c2:
-    if st.button("🌙 / ☀️ تغيير الوضع", use_container_width=True):
-        st.session_state.dark = not st.session_state.dark
-        st.rerun()
 
-tab_quran, tab_adhkar, tab_about = st.tabs([
-    "📖 القرآن الكريم",
-    "🤲 الأذكار",
-    "ℹ️ حول التطبيق"
+# =====================================
+# الشريط الجانبي
+# =====================================
+with st.sidebar:
+    st.markdown("## 📖 حصن المسلم")
+
+    dark_mode = st.toggle(
+        "🌙 الوضع الليلي",
+        value=False,
+    )
+
+    st.divider()
+    st.markdown("### أقسام الموقع")
+    st.write("📗 القرآن الكريم")
+    st.write("🤲 حصن المسلم والأذكار")
+    st.write("🔎 البحث في الأذكار")
+
+
+apply_styles(dark_mode)
+
+
+# =====================================
+# العلامة المائية
+# =====================================
+st.markdown(
+    """
+    <div class="watermark-center">
+        OMAR MELIGY
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# =====================================
+# رأس الموقع
+# =====================================
+st.markdown(
+    """
+    <div class="hero">
+        <h1>حصن المسلم والقرآن الكريم</h1>
+        <p>القرآن الكريم • الأذكار • الدعاء • التلاوات</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# =====================================
+# التبويبات
+# =====================================
+tab_quran, tab_adhkar, tab_search = st.tabs([
+    "📗 القرآن الكريم",
+    "🤲 جميع الأذكار",
+    "🔎 البحث",
 ])
 
-# =========================
+
+# =====================================
 # القرآن الكريم
-# =========================
+# =====================================
 with tab_quran:
+    st.subheader("📗 القرآن الكريم")
+
     try:
-        @st.cache_data(ttl=3600)
-        def load_surahs():
-            r = requests.get(f"{API}/surah", timeout=20)
-            r.raise_for_status()
-            return r.json()["data"]
+        with st.spinner("جارٍ تحميل السور..."):
+            surahs = load_surahs()
 
-        @st.cache_data(ttl=3600)
-        def load_surah(number):
-            r = requests.get(f"{API}/surah/{number}", timeout=20)
-            r.raise_for_status()
-            return r.json()["data"]
+        surah_options = {
+            f"{s['number']}. {s['name']}": s["number"]
+            for s in surahs
+        }
 
-        @st.cache_data(ttl=3600)
-        def load_editions():
-            r = requests.get(
-                f"{API}/edition/format/audio",
-                timeout=20
+        selected_label = st.selectbox(
+            "اختر السورة",
+            list(surah_options.keys()),
+        )
+
+        surah_number = surah_options[selected_label]
+
+        reciter_name = st.selectbox(
+            "اختر القارئ",
+            list(RECITERS.keys()),
+        )
+
+        edition = RECITERS[reciter_name]
+
+        try:
+            with st.spinner("جارٍ تحميل السورة..."):
+                surah_data = load_surah(
+                    surah_number, edition
+                )
+        except Exception:
+            st.warning(
+                "تعذر تحميل التلاوة المختارة؛ "
+                "سنحاول عرض نص القرآن."
             )
-            r.raise_for_status()
-            return {
-                x["identifier"]
-                for x in r.json()["data"]
+            surah_data = load_surah_text(surah_number)
+
+        st.markdown(
+            f"### {surah_data.get('name', selected_label)}"
+        )
+
+        ayahs = surah_data.get("ayahs", [])
+        st.caption(f"عدد الآيات: {len(ayahs)}")
+
+        if ayahs:
+            ayah_options = {
+                f"الآية {ayah.get('numberInSurah', i + 1)}": i
+                for i, ayah in enumerate(ayahs)
             }
 
-        surahs = load_surahs()
-
-        labels = [
-            f"{s['number']} - {s['name']}"
-            for s in surahs
-        ]
-
-        selected = st.selectbox(
-            "اختر السورة",
-            labels
-        )
-
-        number = int(selected.split(" - ")[0])
-        editions = load_editions()
-
-        available = [
-            (name, code)
-            for name, code in RECITERS
-            if code in editions
-        ]
-
-        if not available:
-            available = [("مشاري العفاسي", "ar.alafasy")]
-
-        names = [x[0] for x in available]
-        reciter = st.selectbox("اختر القارئ", names)
-        edition = dict(available)[reciter]
-
-        audio_url = (
-            "https://cdn.islamic.network/quran/audio-surah/"
-            f"128/{edition}/{number}.mp3"
-        )
-
-        st.audio(audio_url, format="audio/mp3")
-
-        surah = load_surah(number)
-
-        st.subheader(f"سورة {surah['name']}")
-        st.caption(
-            f"عدد الآيات: {surah['numberOfAyahs']} | القارئ: {reciter}"
-        )
-
-        for ayah in surah["ayahs"]:
-            st.markdown(
-                f"""<div class="ayah">
-                {ayah['text']}
-                <span style="font-size:0.8em;opacity:0.7">
-                ۞ {ayah['numberInSurah']}
-                </span>
-                </div>""",
-                unsafe_allow_html=True
+            chosen_ayah = st.selectbox(
+                "اختر آية للاستماع",
+                list(ayah_options.keys()),
             )
+
+            ayah = ayahs[ayah_options[chosen_ayah]]
+
+            if ayah.get("audio"):
+                st.markdown(f"**تلاوة {reciter_name}**")
+                st.audio(ayah["audio"])
+
             st.divider()
+            st.markdown("### نص السورة")
 
-    except Exception:
-        st.error(
-            "تعذر تحميل القرآن أو قائمة القراء. "
-            "تحقق من الإنترنت وحاول مرة أخرى."
-        )
+            for ayah in ayahs:
+                text = html.escape(str(ayah.get("text", "")))
+                number = ayah.get("numberInSurah", "")
 
-# =========================
-# حصن المسلم والأذكار
-# =========================
-with tab_adhkar:
-    categories = sorted({
-        item["القسم"] for item in ADHKAR
-    })
-
-    category = st.selectbox(
-        "اختر قسم الأذكار",
-        categories
-    )
-
-    if category != st.session_state.dhikr_category:
-        st.session_state.dhikr_category = category
-        st.session_state.dhikr_index = 0
-
-    items = [
-        item for item in ADHKAR
-        if item["القسم"] == category
-    ]
-
-    if items:
-        index = min(
-            st.session_state.dhikr_index,
-            len(items) - 1
-        )
-
-        item = items[index]
-        key = f"{category}_{index}"
-        count = st.session_state.counts.get(key, 0)
-        target = item["التكرار"]
-
-        st.markdown(
-            f'<div class="dhikr">{item["النص"]}</div>',
-            unsafe_allow_html=True
-        )
-
-        st.caption(
-            f"الذكر {index + 1} من {len(items)}"
-        )
-
-        st.progress(min(count / target, 1.0))
-
-        st.markdown(
-            f"<center>التكرار: {count} / {target}</center>",
-            unsafe_allow_html=True
-        )
-
-        a, b, c = st.columns(3)
-
-        with a:
-            if st.button("➕ تكرار", use_container_width=True):
-                st.session_state.counts[key] = min(
-                    count + 1, target
+                st.markdown(
+                    f"""
+                    <div class="arabic">
+                        {text}
+                        <span class="ayah-number">
+                            ﴿{number}﴾
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-                st.rerun()
+        else:
+            st.warning("لا توجد آيات لعرضها.")
 
-        with b:
-            if st.button("إعادة العداد", use_container_width=True):
-                st.session_state.counts[key] = 0
-                st.rerun()
+    except Exception as error:
+        st.error(
+            "تعذر تحميل القرآن الكريم. "
+            "تأكد من اتصال الإنترنت ثم حاول مرة أخرى."
+        )
+        st.caption(str(error))
 
-        with c:
-            if st.button("الذكر التالي", use_container_width=True):
-                st.session_state.dhikr_index = (
-                    index + 1
-                ) % len(items)
-                st.rerun()
 
-    st.info(
-        "هذه مجموعة بداية وليست جميع أذكار كتاب حصن المسلم. "
-        "راجع النصوص والتكرارات من طبعة موثوقة قبل نشر التطبيق."
+# =====================================
+# جميع الأذكار
+# =====================================
+with tab_adhkar:
+    st.subheader("🤲 حصن المسلم — جميع الأبواب")
+
+    try:
+        with st.spinner("جارٍ تحميل الأذكار..."):
+            adhkar = load_all_adhkar()
+
+        if not adhkar:
+            st.warning("لم يتم العثور على أذكار.")
+        else:
+            st.success(
+                f"تم تحميل {len(adhkar)} ذكرًا ودعاءً."
+            )
+
+            categories = sorted({
+                item["القسم"] for item in adhkar
+            })
+
+            category = st.selectbox(
+                "اختر قسم الأذكار",
+                ["كل الأقسام"] + categories,
+            )
+
+            filtered = adhkar
+
+            if category != "كل الأقسام":
+                filtered = [
+                    item for item in adhkar
+                    if item["القسم"] == category
+                ]
+
+            st.caption(
+                f"عدد النصوص المعروضة: {len(filtered)}"
+            )
+
+            for i, item in enumerate(filtered):
+                with st.container(border=True):
+                    st.markdown(f"#### {item['الباب']}")
+
+                    st.markdown(
+                        '<div class="dhikr">'
+                        + html.escape(item["النص"])
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    if item["النطق"]:
+                        with st.expander("النطق بالحروف اللاتينية"):
+                            st.write(item["النطق"])
+
+                    if item["الترجمة"]:
+                        with st.expander("الترجمة"):
+                            st.write(item["الترجمة"])
+
+                    if item["المصدر"]:
+                        st.caption(
+                            f"المصدر: {item['المصدر']}"
+                        )
+
+                    if st.button(
+                        "عرض النص للنسخ",
+                        key=f"copy_{i}",
+                    ):
+                        st.code(item["النص"])
+
+    except Exception as error:
+        st.error(
+            "تعذر تحميل الأذكار. تحقق من الإنترنت "
+            "أو جرّب مرة أخرى لاحقًا."
+        )
+        st.caption(str(error))
+
+
+# =====================================
+# البحث في الأذكار
+# =====================================
+with tab_search:
+    st.subheader("🔎 البحث في الأذكار")
+
+    query = st.text_input(
+        "اكتب كلمة للبحث",
+        placeholder="مثال: الصباح أو النوم أو سبحان الله",
     )
 
-# =========================
-# حول التطبيق
-# =========================
-with tab_about:
-    st.subheader("عن التطبيق")
-    st.write("""
-    تطبيق عربي للقرآن الكريم والأذكار.
+    if query.strip():
+        try:
+            adhkar = load_all_adhkar()
+            term = query.strip()
 
-    المميزات:
-    - عرض سور القرآن الكريم وآياتها.
-    - اختيار القارئ من الإصدارات المتاحة.
-    - مشغل صوت للتلاوة.
-    - أذكار مع عداد تكرار.
-    - وضع ليلي ونهاري.
-    - علامة مائية قابلة للتعديل.
-    - واجهة متجاوبة مع الهاتف والكمبيوتر.
+            results = [
+                item for item in adhkar
+                if term in item["النص"]
+                or term in item["الباب"]
+                or term in item["القسم"]
+                or term in item["المصدر"]
+            ]
 
-    يتطلب الإنترنت لتحميل القرآن والتلاوات.
-    """)
+            st.write(f"عدد النتائج: {len(results)}")
 
+            if results:
+                for i, item in enumerate(results):
+                    with st.container(border=True):
+                        st.markdown(f"#### {item['الباب']}")
+
+                        st.markdown(
+                            '<div class="dhikr">'
+                            + html.escape(item["النص"])
+                            + "</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                        st.caption(f"القسم: {item['القسم']}")
+
+                        if item["المصدر"]:
+                            st.caption(
+                                f"المصدر: {item['المصدر']}"
+                            )
+            else:
+                st.info("لا توجد نتائج مطابقة.")
+
+        except Exception:
+            st.error(
+                "تعذر البحث؛ لم يتم تحميل بيانات الأذكار."
+            )
+    else:
+        st.info("اكتب كلمة للبحث في الأذكار.")
+
+
+# =====================================
+# تذييل الموقع
+# =====================================
 st.markdown(
-    f'<div class="watermark">{watermark}</div>',
-    unsafe_allow_html=True
-)
+    """
+    <div class="watermark-footer">
+        حصن المسلم والقرآن الكريم
+        <br>
+        صدقة جارية بإذن الله
+    </div>
+    """,
+    unsafe_allow_html=True,
+        )
+                            
